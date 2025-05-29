@@ -5,7 +5,7 @@ This paper has been published in Expert Systems with Applications, checkout the 
 https://www.sciencedirect.com/science/article/pii/S0957417425000831
 
 ## Requirements
-This codebase is built on top of [Detectron2](https://github.com/facebookresearch/detectron2). Follow the instructions [here](https://detectron2.readthedocs.io/en/latest/tutorials/install.html) to install Detectron2.
+This codebase is built on top of [Detectron2](https://github.com/facebookresearch/detectron2). Follow the instructions for Detectron2: [Linux](https://detectron2.readthedocs.io/en/latest/tutorials/install.html) and [Windows](https://medium.com/@yogeshkumarpilli/how-to-install-detectron2-on-windows-10-or-11-2021-aug-with-the-latest-build-v0-5-c7333909676f)
 
 ## Datasets and Pretrained Model
 
