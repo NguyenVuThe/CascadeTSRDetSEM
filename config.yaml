@@ -3,9 +3,9 @@ FinTabNet:
     val_set_name: "fintabnet_val"
     test_set_name: "fintabnet_test"
 
-    train_image_path: "D:/MyWorking/dataset/FinTabNet.c/FinTabNet.c-Structure/images"
-    val_image_path: "D:/MyWorking/dataset/FinTabNet.c/FinTabNet.c-Structure/images"
-    test_image_path: "D:/MyWorking/dataset/FinTabNet.c/FinTabNet.c-Structure/images"
+    train_image_path: "dataset/images"
+    val_image_path: "dataset/images"
+    test_image_path: "dataset/images"
 
     train_json_path: "dataset/ftbc_mini_6classes_train.json"
     val_json_path: "dataset/ftbc_mini_6classes_val.json"
