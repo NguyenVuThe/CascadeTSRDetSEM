@@ -2,7 +2,7 @@ import os
 import xml.etree.ElementTree as ET
 import json
 
-voc_folder = r"D:\MyWorking\dataset\mini_FinTabNet.c\train"
+voc_folder = r"D:\MyWorking\dataset\mini_FinTabNet.c\val"
 ann_dir   = r'D:\MyWorking\dataset\FinTabNet.c\FinTabNet.c-PDF_Annotations'
 output_json = "dataset/ftbc_mini_6classes_val.json"
 
