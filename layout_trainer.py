@@ -12,6 +12,9 @@ import random
 import copy
 import torch
 import os
+import torch.nn.functional as F
+from transformers import AutoTokenizer, AutoModel
+import logging
 
 def random_pairs(length):
     def pop_random(l):
@@ -34,6 +37,9 @@ class LayoutMapper:
         self.shortest_side_range = [80, 160, 320, 640, 672, 704, 736, 768, 800, 1000]
         self.resized_height = 1333
         self.resized_width = 800
+        self.text_model = AutoModel.from_pretrained("ProsusAI/finbert")
+        self.text_tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
+        self.text_model.eval()
 
     def get_aug_list(self):
         if self.if_augmentation:
@@ -103,8 +109,28 @@ class LayoutMapper:
                 utils.transform_instance_annotations(annotation, [transforms], image.shape[1:])
                 for annotation in dataset_dict.pop("annotations")
                 ]
+        
+        instances = utils.annotations_to_instances(annos, image.shape[1:])
+        texts = [anno.get("text", "") for anno in annos]
+        inputs = self.text_tokenizer(texts, return_tensors="pt", padding=True, truncation=True, max_length=32)
+
+        with torch.no_grad():
+            outputs = self.text_model(**inputs)
+            # Lấy embedding từ [CLS] token
+            cls_embeddings = outputs.last_hidden_state[:, 0, :]  # shape: (N, D)
+
+        cls_embeddings = F.normalize(cls_embeddings, p=2, dim=1)
+        instances.gt_text_embedding = cls_embeddings
+        # for i, ann in enumerate(annotations):
+        #     print(f"[ORIG ANNO {i}] category_id: {ann['category_id']}, bbox: {ann['bbox']}, text: {ann.get('text', 'NO TEXT')}")
+
+        # Assign gt_text and pred_text for all annotations
+        # instances.gt_text = texts
+        # instances.pred_text = texts
+        dataset_dict["instances"] = instances
+        logging.debug(f"Instances: {instances}")
         dataset_dict["image"] = image
-        dataset_dict["instances"] = utils.annotations_to_instances(annos, image.shape[1:])
+        dataset_dict["gt_text"] = texts
         
         return dataset_dict
 

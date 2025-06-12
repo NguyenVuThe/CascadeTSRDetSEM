@@ -3,13 +3,13 @@ FinTabNet:
     val_set_name: "fintabnet_val"
     test_set_name: "fintabnet_test"
 
-    train_image_path: "/data/datasets/TSR_Detection/FinTabNet/fintabnet_detection_format_padded/FinTabNet.c_Image_Structure_PASCAL_VOC_PADDING_2/images"
-    val_image_path: "/data/datasets/TSR_Detection/FinTabNet/fintabnet_detection_format_padded/FinTabNet.c_Image_Structure_PASCAL_VOC_PADDING_2/images"
-    test_image_path: "/data/datasets/TSR_Detection/FinTabNet/fintabnet_detection_format_padded/FinTabNet.c_Image_Structure_PASCAL_VOC_PADDING_2/images"
+    train_image_path: "D:/MyWorking/dataset/FinTabNet.c/FinTabNet.c-Structure/images"
+    val_image_path: "D:/MyWorking/dataset/FinTabNet.c/FinTabNet.c-Structure/images"
+    test_image_path: "D:/MyWorking/dataset/FinTabNet.c/FinTabNet.c-Structure/images"
 
-    train_json_path: "/data/datasets/TSR_Detection/FinTabNet/fintabnet_detection_format_padded/pad2_6classes_train.json"
-    val_json_path: "/data/datasets/TSR_Detection/FinTabNet/fintabnet_detection_format_padded/pad2_6classes_val.json"
-    test_json_path: "/data/datasets/TSR_Detection/FinTabNet/fintabnet_detection_format_padded/pad2_6classes_test.json"
+    train_json_path: "D:/MyWorking/CascadeTSRDetSEM/dataset/ftbc_mini_6classes_val.json"
+    val_json_path: "D:/MyWorking/CascadeTSRDet/ftbc_demo_6classes_val.json"
+    test_json_path: "D:/MyWorking/CascadeTSRDet/ftbc_demo_6classes_test.json"
 
     config_file: "model_config/fintabnet.yaml"
     meta:
@@ -52,7 +52,7 @@ PubTables1M:
         thing_classes: ['table', 'table column', 'table row', 'table spanning cell', 'table projected row header', 'table column header']
     resume: False
 
-num_gpus: 8
+num_gpus: 1
 num_machines: 1
 machine_rank: 0
 dist_url: "auto"

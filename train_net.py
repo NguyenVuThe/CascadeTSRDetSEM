@@ -16,6 +16,8 @@ from detectron2.modeling import GeneralizedRCNNWithTTA
 from detectron2.data.datasets.coco import register_coco_instances
 from layout_trainer import LayoutTrainer
 import yaml
+import logging
+#logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(message)s')
 
 class Trainer(LayoutTrainer):
     """
@@ -85,6 +87,6 @@ if __name__ == "__main__":
         config = yaml.load(f, yaml.FullLoader)
     args = argparse.Namespace(**config)
     #publaynet_args = argparse.Namespace(**args.PubTables1M)
-    #publaynet_args = argparse.Namespace(**args.FinTabNet)
-    publaynet_args = argparse.Namespace(**args.SciTSR)
+    publaynet_args = argparse.Namespace(**args.FinTabNet)
+    #publaynet_args = argparse.Namespace(**args.SciTSR)
     launch(main, args.num_gpus, num_machines=args.num_machines, machine_rank=args.machine_rank, dist_url=args.dist_url, args=(publaynet_args,),)

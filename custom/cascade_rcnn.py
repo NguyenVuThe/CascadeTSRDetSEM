@@ -16,6 +16,7 @@ from .box_head import build_box_head
 from .fast_rcnn import MyFastRCNNOutputLayers, fast_rcnn_inference
 from detectron2.modeling.roi_heads import ROI_HEADS_REGISTRY, StandardROIHeads
 import copy
+import logging
 
 
 class _ScaleGradient(Function):
@@ -308,6 +309,16 @@ class MyCascadeROIHeads(StandardROIHeads):
         #box_features, proposal_features = self.box_head[stage](box_features, proposal_features)
         #return self.box_predictor[stage](box_features, proposal_features), proposal_features
         box_features  = self.box_head[stage](box_features)
+
+        # # Lấy text embedding từ từng ảnh
+        # text_embeddings = [x.gt_text_embedding for x in proposals]  # List[Tensor] mỗi ảnh
+        # text_embeddings = torch.cat(text_embeddings, dim=0)
+
+        # # Kiểm tra đúng kích thước
+        # assert box_features.shape[0] == text_embeddings.shape[0], f"Mismatch box_features ({box_features.shape}) vs text_embeddings ({text_embeddings.shape})"
+        # logging.debug(f"Mismatch box_features ({box_features.shape}) vs text_embeddings ({text_embeddings.shape}")
+        # fused_features = torch.cat([box_features, text_embeddings], dim=1)  
+
         return self.box_predictor[stage](box_features)
 
     def _create_proposals_from_boxes(self, boxes, image_sizes):

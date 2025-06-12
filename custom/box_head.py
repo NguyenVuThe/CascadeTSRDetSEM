@@ -8,6 +8,7 @@ from detectron2.config import configurable
 from detectron2.layers import Conv2d, ShapeSpec, get_norm
 from detectron2.utils.registry import Registry
 from .head import DynamicConv
+import logging
 
 __all__ = ["MyFastRCNNConvFCHead", "build_box_head", "ROI_BOX_HEAD_REGISTRY"]
 
@@ -188,6 +189,7 @@ class MyFastRCNNConvFCHead(nn.Module):
                 "conv_norm": cfg.MODEL.ROI_BOX_HEAD.NORM,}
 
     def forward(self, x):
+        #logging.debug(f"[MyFastRCNNConvFCHead] Forward pass with input shape: {x.shape}")
     #def forward(self, x, proposal_features = None):
         #proposal_features shape: 1 * 1024 * 1024
         #x.shape before layers: 1024, 256, 7, 7
@@ -195,6 +197,7 @@ class MyFastRCNNConvFCHead(nn.Module):
         roi_features = x
         for layer in self.layers:
             x = layer(x)
+            #logging.debug(f"[MyFastRCNNConvFCHead] After layer {layer}: shape = {x.shape}")
 
         return x
         #shape = proposal_features.shape

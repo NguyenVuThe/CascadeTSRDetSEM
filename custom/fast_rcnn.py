@@ -13,6 +13,8 @@ from detectron2.modeling.box_regression import Box2BoxTransform, _dense_box_regr
 from detectron2.structures import Boxes, Instances
 from detectron2.utils.events import get_event_storage
 
+from transformers import AutoTokenizer, AutoModel
+
 __all__ = ["fast_rcnn_inference", "MyFastRCNNOutputLayers"]
 
 
@@ -284,6 +286,7 @@ class MyFastRCNNOutputLayers(nn.Module):
         num_bbox_reg_classes = 1 if cls_agnostic_bbox_reg else num_classes
         box_dim = len(box2box_transform.weights)
         self.bbox_pred = nn.Linear(input_size, num_bbox_reg_classes * box_dim)
+        self.text_proj = nn.Linear(input_size, 768)  
 
         nn.init.normal_(self.cls_score.weight, std=0.01)
         nn.init.normal_(self.bbox_pred.weight, std=0.001)
@@ -331,7 +334,36 @@ class MyFastRCNNOutputLayers(nn.Module):
             "fed_loss_num_classes"      : cfg.MODEL.ROI_BOX_HEAD.FED_LOSS_NUM_CLASSES,
             # fmt: on
         }
+    
+    def compute_text_embedding(self, texts):
+        """Tính embedding văn bản (chỉ khi use_bert=True)"""
+        if not self.use_bert or len(texts) == 0:
+            return torch.zeros((1, 512), device=self.cls_score.weight.device)
+            
+        tokens = self.tokenizer(
+            texts, 
+            padding=True, 
+            truncation=True, 
+            return_tensors="pt"
+        ).to(self.cls_score.weight.device)
+        
+        with torch.no_grad():
+            outputs = self.text_encoder(**tokens)
+        
+        embeddings = outputs.last_hidden_state[:, 0, :]  # [CLS] embedding
+        return self.proj(embeddings)  # Project về 512-dim
 
+    def compute_content_loss(self, pred_texts, gt_texts):
+        """Tính loss nội dung (chỉ khi use_bert=True)"""
+        if not self.use_bert or len(pred_texts) == 0:
+            return torch.tensor(0.0, device=self.cls_score.weight.device)
+            
+        pred_emb = self.compute_text_embedding(pred_texts)
+        gt_emb = self.compute_text_embedding(gt_texts)
+        cosine_sim = F.cosine_similarity(pred_emb, gt_emb, dim=-1)
+        return (1 - cosine_sim).mean()
+
+    
     def forward(self, x, proposal_features = None):
         """
         Args:
@@ -358,7 +390,13 @@ class MyFastRCNNOutputLayers(nn.Module):
 
         scores = self.cls_score(x)
         proposal_deltas = self.bbox_pred(x)
-        return scores, proposal_deltas
+        # Log the input features for debugging
+        logger.debug(f"Input x: {x.shape}")
+        pred_text_embedding = self.text_proj(x)
+
+        # Log the outputs of the parent forward pass
+        logger.debug(f"Scores: {scores.shape}, Proposal Deltas: {proposal_deltas.shape}, Pred_text_embedding: {pred_text_embedding.shape}")
+        return scores, proposal_deltas, pred_text_embedding
 
     def losses(self, predictions, proposals):
         """
@@ -371,7 +409,31 @@ class MyFastRCNNOutputLayers(nn.Module):
         Returns:
             Dict[str, Tensor]: dict of losses
         """
-        scores, proposal_deltas = predictions
+        losses_dict = super().losses(predictions, proposals) if hasattr(super(), "losses") else {}
+        scores, proposal_deltas, pred_text_embedding = predictions
+
+        for p in proposals:
+            if hasattr(p, "gt_text_embedding"):
+                logger.debug(f"Found gt_text_embedding for proposal: {p.gt_text_embedding}")
+            else:
+                logger.debug(f"Missing gt_text_embedding for proposal: {p}")
+
+        # Filter out proposals that do not have "gt_text_embedding"
+        proposals_with_gt_text = [p for p in proposals if hasattr(p, "gt_text_embedding")]
+
+        if len(proposals_with_gt_text) > 0:
+            gt_text_embedding = torch.cat([p.gt_text_embedding for p in proposals_with_gt_text], dim=0)
+            logging.debug(f"GT Text: {gt_text_embedding}")
+
+            pred_norm = F.normalize(pred_text_embedding, p=2, dim=1)
+            gt_norm = F.normalize(gt_text_embedding, p=2, dim=1)
+
+            target = torch.ones(pred_norm.size(0), device=pred_norm.device)
+            loss_content = F.cosine_embedding_loss(pred_norm, gt_norm, target)
+            loss_content *= self.loss_weight.get("loss_content", 1.0)
+        else:
+            logger.debug("[MyFastRCNNOutputLayers] Skipping loss_content (missing gt_text_embedding).")
+            loss_content = 0.0
 
         # parse classification outputs
         gt_classes = (
@@ -411,13 +473,19 @@ class MyFastRCNNOutputLayers(nn.Module):
         #        gamma=2.0,
         #        reduction="mean",)
 
-        losses = {
+        # loss_content = torch.tensor(0.1234, device=gt_classes.device) 
+
+        # Scaled loss_content
+        scaled_loss_content = 0.0001 * loss_content if len(proposals_with_gt_text) > 0 else 0.0
+
+        losses_dict = {
             "loss_cls": loss_cls,
             "loss_box_reg": self.box_reg_loss(
                 proposal_boxes, gt_boxes, proposal_deltas, gt_classes
             ),
+            "loss_content": scaled_loss_content
         }
-        return {k: v * self.loss_weight.get(k, 1.0) for k, v in losses.items()}
+        return {k: v * self.loss_weight.get(k, 1.0) for k, v in losses_dict.items()}
 
     # Implementation from https://github.com/xingyizhou/CenterNet2/blob/master/projects/CenterNet2/centernet/modeling/roi_heads/fed_loss.py  # noqa
     # with slight modifications
@@ -605,7 +673,7 @@ class MyFastRCNNOutputLayers(nn.Module):
         """
         if not len(proposals):
             return []
-        _, proposal_deltas = predictions
+        _, proposal_deltas, *_ = predictions
         num_prop_per_image = [len(p) for p in proposals]
         proposal_boxes = cat([p.proposal_boxes.tensor for p in proposals], dim=0)
         predict_boxes = self.box2box_transform.apply_deltas(
@@ -628,10 +696,79 @@ class MyFastRCNNOutputLayers(nn.Module):
                 A list of Tensors of predicted class probabilities for each image.
                 Element i has shape (Ri, K + 1), where Ri is the number of proposals for image i.
         """
-        scores, _ = predictions
+        scores, *_ = predictions
         num_inst_per_image = [len(p) for p in proposals]
         if self.use_sigmoid_ce:
             probs = scores.sigmoid()
         else:
             probs = F.softmax(scores, dim=-1)
         return probs.split(num_inst_per_image, dim=0)
+
+# class MyFastRCNNOutputLayersWithBERT(MyFastRCNNOutputLayers):
+#     def __init__(self, cfg, input_shape,  **kwargs):
+        
+#         base_config = MyFastRCNNOutputLayers.from_config(cfg, input_shape)
+#         base_config.update(kwargs)
+#         super().__init__(**base_config)  # Truyền toàn bộ tham số cho lớp cha
+
+#         # Load FinBERT model for content embedding
+#         self.text_encoder = AutoModel.from_pretrained("ProsusAI/finbert")
+#         self.tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
+#         self.text_encoder.eval()  # We'll freeze BERT for inference only
+#         for param in self.text_encoder.parameters():
+#             param.requires_grad = False
+
+#         # Add a projection layer to reduce embedding size from 768 to 512
+#         self.proj = nn.Linear(768, 512)
+
+#     def compute_text_embedding(self, texts):
+#         if len(texts) == 0:
+#             return torch.zeros((1, 512), device=self.cls_score.weight.device)
+#         tokens = self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt").to(self.cls_score.weight.device)
+#         with torch.no_grad():
+#             outputs = self.text_encoder(**tokens)
+#         embeddings = outputs.last_hidden_state[:, 0, :]  # [CLS] embedding
+#         embeddings = self.proj(embeddings)  # Project to 512-dim
+#         return embeddings
+
+#     def compute_content_loss(self, pred_texts, gt_texts):
+#         pred_emb = self.compute_text_embedding(pred_texts)
+#         gt_emb = self.compute_text_embedding(gt_texts)
+#         cosine_sim = F.cosine_similarity(pred_emb, gt_emb, dim=-1)
+#         return (1 - cosine_sim).mean()
+    
+#     def losses(self, predictions, proposals):
+#         # Gọi hàm losses của lớp cha để lấy loss_cls và loss_box_reg
+#         losses_dict = super().losses(predictions, proposals)
+        
+#         # Bổ sung loss_content nếu có dữ liệu
+#         if self.training and all(p.has("gt_text") and p.has("pred_text") for p in proposals):
+#             gt_texts = [t for p in proposals for t in p.gt_text]
+#             pred_texts = [t for p in proposals for t in p.pred_text]
+#             if len(gt_texts) == len(pred_texts) and len(gt_texts) > 0:
+#                 loss_content = self.compute_content_loss(pred_texts, gt_texts)
+#                 losses_dict["loss_content"] = loss_content * 1.0  # Có thể thêm trọng số
+#                 logger.debug(f"loss_content: {loss_content.item()}")
+        
+#         return losses_dict
+
+#     def forward(self, x, proposal_features=None):
+#         """
+#         Override the forward method to add logging and retain the functionality of the parent class.
+#         """
+#         # Log the input features for debugging
+#         logging.debug(f"Input x: {x.shape}")
+
+#         # Call the parent class's forward method
+#         scores, proposal_deltas = super().forward(x, proposal_features)
+
+#         # Log the outputs of the parent forward pass
+#         logging.debug(f"Scores: {scores.shape}, Proposal Deltas: {proposal_deltas.shape}")
+
+#         # Optionally, you can log text embeddings or any other component
+#         if proposal_features is not None:
+#             text_embeddings = self.compute_text_embedding(proposal_features)
+#             logging.debug(f"Text Embeddings: {text_embeddings.shape}")
+
+#         # Return the results as usual
+#         return scores, proposal_deltas
