@@ -72,7 +72,7 @@ SOLVER:
 INPUT:
     MIN_SIZE_TRAIN: (640, 672, 704, 736, 768, 800)
 
-OUTPUT_DIR: "/nguyenvtk/data"  #"/data/logs/FinTabNet_TSRDet"
+OUTPUT_DIR: "./output"  #"/data/logs/FinTabNet_TSRDet"
 
 TEST:
     #EVAL_PERIOD: 27000
